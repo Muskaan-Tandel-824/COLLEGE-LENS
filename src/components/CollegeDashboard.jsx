@@ -1,0 +1,723 @@
+import { useEffect, useState } from "react";
+import { collegeService, reviewService, galleryService } from "../services/api";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "./ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+import { Star, Users, MessageSquare, LogOut, MapPin, Building, Briefcase, IndianRupee, Upload, Camera, Trash2, Image, Video, Plus } from "lucide-react";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Textarea } from "./ui/textarea";
+
+export function CollegeDashboard({ user, onLogout }) {
+    const [college, setCollege] = useState(null);
+    const [reviews, setReviews] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    // Gallery State
+    const [galleryMedia, setGalleryMedia] = useState([]);
+    const [galleryCategory, setGalleryCategory] = useState('classroom');
+    const [galleryUploading, setGalleryUploading] = useState(false);
+    const GALLERY_CATEGORIES = [
+        { value: 'classroom', label: 'Classroom' },
+        { value: 'campus', label: 'Campus' },
+        { value: 'library', label: 'Library' },
+        { value: 'hostel', label: 'Hostel' },
+        { value: 'canteen', label: 'Canteen' },
+        { value: 'seminar_hall', label: 'Seminar Hall' },
+        { value: 'ground', label: 'Ground' },
+        { value: 'laboratory', label: 'Laboratory' },
+        { value: 'other', label: 'Other' },
+    ];
+
+    // Edit Mode State
+    const [isEditing, setIsEditing] = useState(false);
+    const [isEditingDetails, setIsEditingDetails] = useState(false);
+    const [editFormData, setEditFormData] = useState({});
+    const [uploading, setUploading] = useState(false);
+
+    // New College Creation State
+    const [newCollegeData, setNewCollegeData] = useState({
+        name: "",
+        location: "",
+        description: "",
+        established_year: "",
+        website: ""
+    });
+
+
+
+    // Initialize edit form data when college loads
+    useEffect(() => {
+        if (college) {
+            setEditFormData({
+                placement_description: college.placement_description || "",
+                average_package: college.average_package || "",
+                highest_package: college.highest_package || "",
+                name: college.name || "",
+                location: college.location || "",
+                established_year: college.established_year || "",
+                description: college.description || "",
+                website: college.website || ""
+            });
+        }
+    }, [college]);
+
+    const handleUpdateCollege = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            const updatedCollege = await collegeService.update(college.id, editFormData);
+            setCollege({ ...college, ...updatedCollege });
+            setIsEditing(false);
+            alert("College details updated successfully!");
+        } catch (error) {
+            console.error("Failed to update college", error);
+            alert("Failed to update details. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleUpdateCollegeDetails = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            const detailsData = {
+                name: editFormData.name,
+                location: editFormData.location,
+                established_year: editFormData.established_year,
+                website: editFormData.website,
+                description: editFormData.description
+            };
+            const updatedCollege = await collegeService.update(college.id, detailsData);
+            setCollege({ ...college, ...updatedCollege });
+            setIsEditingDetails(false);
+            alert("College profile updated successfully!");
+        } catch (error) {
+            console.error("Failed to update college details", error);
+            alert("Failed to update details. Please try again.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleCreateCollege = async (e) => {
+        e.preventDefault();
+        try {
+            setLoading(true);
+            const createdCollege = await collegeService.create(newCollegeData);
+
+            // Update local user state to reflect new college_id
+            const updatedUser = { ...user, college_id: createdCollege.id };
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+
+            // Trigger reload or just set state
+            window.location.reload(); // Simplest way to refresh everything including user context
+        } catch (error) {
+            console.error("Failed to create college", error);
+            alert("Failed to create college. Please try again.");
+            setLoading(false);
+        }
+    };
+
+
+
+    const handlePhotoUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        try {
+            setUploading(true);
+            const formData = new FormData();
+            formData.append('image', file);
+
+            const updatedCollege = await collegeService.update(college.id, formData);
+            setCollege({ ...college, image: updatedCollege.image });
+            alert("College photo updated successfully!");
+        } catch (error) {
+            console.error("Failed to upload photo", error);
+            alert("Failed to upload photo. Please try again.");
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    // Initial data fetch
+    useEffect(() => {
+        const fetchData = async () => {
+            if (!user?.college_id) {
+                // If user doesn't have a college_id, we stop loading but don't fetch
+                setLoading(false);
+                return;
+            }
+
+            try {
+                setLoading(true);
+                // Fetch college details
+                const collegeData = await collegeService.getDetail(user.college_id);
+                setCollege(collegeData);
+
+                // Fetch reviews (if not included in detail)
+                if (collegeData.reviews) {
+                    setReviews(collegeData.reviews);
+                } else {
+                    const reviewsData = await reviewService.getByCollege(user.college_id);
+                    setReviews(reviewsData);
+                }
+
+                // Fetch gallery media
+                const galleryData = await galleryService.getByCollege(user.college_id);
+                setGalleryMedia(galleryData);
+            } catch (error) {
+                console.error("Failed to fetch dashboard data", error);
+                alert("Failed to load dashboard data. Please try refreshing.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        if (user) {
+            fetchData();
+        }
+    }, [user]);
+
+    if (loading) {
+        return <div className="flex items-center justify-center min-h-screen">Loading dashboard...</div>;
+    }
+
+    if (!user?.college_id) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen p-4 bg-gray-50">
+                <Card className="w-full max-w-lg">
+                    <CardHeader>
+                        <CardTitle className="text-2xl">Create College Profile</CardTitle>
+                        <CardDescription>
+                            Welcome! Let's set up your college profile to get started.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <form onSubmit={handleCreateCollege} className="space-y-4">
+                            <div>
+                                <Label>College Name</Label>
+                                <Input
+                                    required
+                                    value={newCollegeData.name}
+                                    onChange={(e) => setNewCollegeData({ ...newCollegeData, name: e.target.value })}
+                                    placeholder="e.g. Indian Institute of Technology, Bombay"
+                                />
+                            </div>
+                            <div>
+                                <Label>Location</Label>
+                                <Input
+                                    required
+                                    value={newCollegeData.location}
+                                    onChange={(e) => setNewCollegeData({ ...newCollegeData, location: e.target.value })}
+                                    placeholder="e.g. Mumbai, Maharashtra"
+                                />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <Label>Established Year</Label>
+                                    <Input
+                                        type="number"
+                                        required
+                                        value={newCollegeData.established_year}
+                                        onChange={(e) => setNewCollegeData({ ...newCollegeData, established_year: e.target.value })}
+                                        placeholder="e.g. 1958"
+                                    />
+                                </div>
+                                <div>
+                                    <Label>Website</Label>
+                                    <Input
+                                        type="url"
+                                        required
+                                        value={newCollegeData.website}
+                                        onChange={(e) => setNewCollegeData({ ...newCollegeData, website: e.target.value })}
+                                        placeholder="https://example.com"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <Label>Description</Label>
+                                <Textarea
+                                    required
+                                    value={newCollegeData.description}
+                                    onChange={(e) => setNewCollegeData({ ...newCollegeData, description: e.target.value })}
+                                    placeholder="Tell us about the college..."
+                                    className="min-h-[100px]"
+                                />
+                            </div>
+                            <Button type="submit" className="w-full" disabled={loading}>
+                                {loading ? "Creating Profile..." : "Create Profile"}
+                            </Button>
+                        </form>
+                        <div className="mt-4 text-center">
+                            <Button variant="link" onClick={onLogout} className="text-gray-500">
+                                Logout
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+        );
+    }
+
+    if (loading) {
+        return <div className="flex items-center justify-center min-h-screen">Loading dashboard...</div>;
+    }
+
+    if (!college) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen p-4 text-center">
+                <h2 className="text-xl font-bold mb-2">College Not Found</h2>
+                <p className="text-gray-600 mb-4">Could not load college details.</p>
+                <Button onClick={onLogout}>Logout</Button>
+            </div>
+        );
+    }
+
+    return (
+        <div className="min-h-screen bg-gray-50">
+            {/* Dashboard Header */}
+            <header className="bg-white border-b shadow-sm">
+                <div className="container mx-auto px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
+                            {college.name.substring(0, 2)}
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+                            <p className="text-sm text-gray-500">{college.name}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <span className="text-sm text-gray-600">Welcome, {user.username}</span>
+                        <Button variant="outline" size="sm" onClick={onLogout} className="gap-2">
+                            <LogOut className="w-4 h-4" />
+                            Logout
+                        </Button>
+                    </div>
+                </div>
+            </header>
+
+            <main className="container mx-auto px-6 py-8">
+                {/* College Info & Stats */}
+                <div className="bg-white rounded-lg p-6 shadow-sm mb-8 flex items-center gap-6">
+                    <div className="relative group w-32 h-32 flex-shrink-0">
+                        {college.image ? (
+                            <img
+                                src={college.image}
+                                alt={college.name}
+                                className="w-full h-full object-cover rounded-lg border"
+                            />
+                        ) : (
+                            <div className="w-full h-full bg-gray-100 rounded-lg flex items-center justify-center border text-gray-400">
+                                <Building className="w-12 h-12" />
+                            </div>
+                        )}
+                        <label className="absolute inset-0 bg-black/50 text-white flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer rounded-lg">
+                            <Camera className="w-6 h-6 mb-1" />
+                            <span className="text-xs">Change Photo</span>
+                            <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={handlePhotoUpload}
+                                disabled={uploading}
+                            />
+                        </label>
+                        {uploading && <div className="absolute inset-0 bg-white/80 flex items-center justify-center z-10 rounded-lg"><span className="text-xs font-bold">Uploading...</span></div>}
+                    </div>
+                    <div>
+                        <h2 className="text-2xl font-bold text-gray-900">{college.name}</h2>
+                        <p className="text-gray-500 flex items-center gap-1 mt-1">
+                            <MapPin className="w-4 h-4" /> {college.location}
+                        </p>
+                        <div className="flex gap-4 mt-4">
+                            <div className="text-center px-4 py-2 bg-blue-50 rounded-lg border border-blue-100">
+                                <p className="text-xs text-blue-600 font-medium uppercase tracking-wide">Avg Package</p>
+                                <p className="text-lg font-bold text-blue-900">₹{college.average_package || "N/A"} LPA</p>
+                            </div>
+                            <div className="text-center px-4 py-2 bg-green-50 rounded-lg border border-green-100">
+                                <p className="text-xs text-green-600 font-medium uppercase tracking-wide">Highest Package</p>
+                                <p className="text-lg font-bold text-green-900">₹{college.highest_package || "N/A"} LPA</p>
+                            </div>
+                            <div className="text-center px-4 py-2 bg-yellow-50 rounded-lg border border-yellow-100">
+                                <p className="text-xs text-yellow-600 font-medium uppercase tracking-wide">Rating</p>
+                                <p className="text-lg font-bold text-yellow-900">{college.average_rating || "0.0"}/5</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <Tabs defaultValue="reviews" className="w-full">
+                    <TabsList className="mb-6">
+                        <TabsTrigger value="reviews">Student Reviews</TabsTrigger>
+                        <TabsTrigger value="placements">Placements</TabsTrigger>
+                        <TabsTrigger value="gallery">Gallery</TabsTrigger>
+                        <TabsTrigger value="details">College Details</TabsTrigger>
+                    </TabsList>
+
+                    <TabsContent value="placements">
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <CardTitle className="flex items-center gap-2">
+                                    <Briefcase className="w-5 h-5 text-blue-600" />
+                                    Placement Highlights
+                                </CardTitle>
+                                <Button variant="outline" size="sm" onClick={() => setIsEditing(!isEditing)}>
+                                    {isEditing ? "Cancel Edit" : "Edit Details"}
+                                </Button>
+                            </CardHeader>
+                            <CardContent>
+                                {isEditing ? (
+                                    <form onSubmit={handleUpdateCollege} className="space-y-4">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <Label>Average Package (LPA)</Label>
+                                                <div className="relative">
+                                                    <IndianRupee className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                                                    <Input
+                                                        type="number"
+                                                        className="pl-9"
+                                                        value={editFormData.average_package}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, average_package: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <Label>Highest Package (LPA)</Label>
+                                                <div className="relative">
+                                                    <IndianRupee className="absolute left-3 top-2.5 w-4 h-4 text-gray-500" />
+                                                    <Input
+                                                        type="number"
+                                                        className="pl-9"
+                                                        value={editFormData.highest_package}
+                                                        onChange={(e) => setEditFormData({ ...editFormData, highest_package: e.target.value })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <Label>Placement Description</Label>
+                                            <textarea
+                                                className="w-full min-h-[150px] p-3 text-sm border rounded-md mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                placeholder="Describe your college's placement record, top recruiters, and statistics..."
+                                                value={editFormData.placement_description}
+                                                onChange={(e) => setEditFormData({ ...editFormData, placement_description: e.target.value })}
+                                            />
+                                        </div>
+                                        <Button type="submit" className="w-full">Save Changes</Button>
+                                    </form>
+                                ) : (
+                                    <div className="space-y-6">
+                                        <div className="prose max-w-none text-gray-700">
+                                            {college.placement_description ? (
+                                                <p className="whitespace-pre-line">{college.placement_description}</p>
+                                            ) : (
+                                                <div className="text-center py-8 bg-gray-50 rounded-lg dashed-border">
+                                                    <p className="text-gray-500">No placement details added yet.</p>
+                                                    <Button variant="link" onClick={() => setIsEditing(true)}>Add Details</Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+
+
+                    <TabsContent value="reviews">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle>Recent Reviews</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                {reviews.length === 0 ? (
+                                    <div className="text-center py-8 text-gray-500">No reviews yet.</div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {reviews.map((review) => (
+                                            <div key={review.id} className="border-b last:border-0 pb-6 last:pb-0">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="font-semibold text-gray-900">
+                                                            {review.user?.username || "Student"}
+                                                        </div>
+                                                        <div className="flex items-center">
+                                                            {[...Array(5)].map((_, i) => (
+                                                                <Star
+                                                                    key={i}
+                                                                    className={`w-3 h-3 ${i < review.rating ? "fill-yellow-400 text-yellow-400" : "fill-gray-200 text-gray-200"}`}
+                                                                />
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {new Date(review.created_at).toLocaleDateString()}
+                                                    </div>
+                                                </div>
+                                                <p className="text-gray-700 text-sm mb-3">{review.text}</p>
+
+                                                {/* Comments Section */}
+                                                {review.comments && review.comments.length > 0 && (
+                                                    <div className="bg-gray-50 p-3 rounded-md mt-2">
+                                                        <p className="text-xs font-semibold text-gray-600 mb-2">Comments:</p>
+                                                        <div className="space-y-2">
+                                                            {review.comments.map((comment) => (
+                                                                <div key={comment.id} className="text-xs text-gray-600 border-l-2 border-blue-200 pl-2">
+                                                                    <span className="font-medium">{comment.user?.username}: </span>
+                                                                    {comment.text}
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="details">
+                        <Card>
+                            <CardHeader className="flex flex-row items-center justify-between">
+                                <CardTitle>College Profile</CardTitle>
+                                <Button variant="outline" size="sm" onClick={() => setIsEditingDetails(!isEditingDetails)}>
+                                    {isEditingDetails ? "Cancel Edit" : "Edit Details"}
+                                </Button>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {isEditingDetails ? (
+                                    <form onSubmit={handleUpdateCollegeDetails} className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <Label>College Name</Label>
+                                                <Input
+                                                    required
+                                                    value={editFormData.name}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+                                                    placeholder="College Name"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label>Location</Label>
+                                                <Input
+                                                    required
+                                                    value={editFormData.location}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, location: e.target.value })}
+                                                    placeholder="Location"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label>Website</Label>
+                                                <Input
+                                                    type="url"
+                                                    required
+                                                    value={editFormData.website}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, website: e.target.value })}
+                                                    placeholder="https://example.com"
+                                                />
+                                            </div>
+                                            <div>
+                                                <Label>Established Year</Label>
+                                                <Input
+                                                    type="number"
+                                                    required
+                                                    value={editFormData.established_year}
+                                                    onChange={(e) => setEditFormData({ ...editFormData, established_year: e.target.value })}
+                                                    placeholder="e.g. 1958"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <Label>Description</Label>
+                                            <textarea
+                                                className="w-full min-h-[150px] p-3 text-sm border rounded-md mt-1 focus:ring-2 focus:ring-blue-500 outline-none"
+                                                required
+                                                value={editFormData.description}
+                                                onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                                                placeholder="Tell us about the college..."
+                                            />
+                                        </div>
+                                        <Button type="submit" className="w-full">Save Changes</Button>
+                                    </form>
+                                ) : (
+                                    <>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">College Name</label>
+                                                <p className="text-gray-900">{college.name}</p>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Location</label>
+                                                <div className="flex items-center gap-1">
+                                                    <MapPin className="w-4 h-4 text-gray-400" />
+                                                    <p className="text-gray-900">{college.location}</p>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Website</label>
+                                                <a href={college.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline block truncate">
+                                                    {college.website}
+                                                </a>
+                                            </div>
+                                            <div>
+                                                <label className="text-sm font-medium text-gray-500">Established</label>
+                                                <p className="text-gray-900">{college.established_year}</p>
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <label className="text-sm font-medium text-gray-500">Description</label>
+                                            <p className="text-gray-700 mt-1">{college.description}</p>
+                                        </div>
+                                    </>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+
+                    <TabsContent value="gallery">
+                        <Card>
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2">
+                                    <Image className="w-5 h-5 text-blue-600" />
+                                    Gallery Management
+                                </CardTitle>
+                                <CardDescription>Upload photos and videos for students to see on your college profile.</CardDescription>
+                            </CardHeader>
+                            <CardContent>
+                                {/* Upload Section */}
+                                <div className="bg-gray-50 p-6 rounded-lg border mb-8">
+                                    <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                                        <Plus className="w-4 h-4" />
+                                        Upload New Media
+                                    </h4>
+                                    <div className="flex flex-wrap items-end gap-4">
+                                        <div>
+                                            <Label className="mb-1 block">Category</Label>
+                                            <select
+                                                value={galleryCategory}
+                                                onChange={(e) => setGalleryCategory(e.target.value)}
+                                                className="h-10 px-3 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                                            >
+                                                {GALLERY_CATEGORIES.map(cat => (
+                                                    <option key={cat.value} value={cat.value}>{cat.label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <Label className="mb-1 block">Photo or Video</Label>
+                                            <label className="inline-flex items-center gap-2 h-10 px-4 bg-blue-600 text-white rounded-md cursor-pointer hover:bg-blue-700 transition-colors text-sm">
+                                                <Upload className="w-4 h-4" />
+                                                {galleryUploading ? "Uploading..." : "Choose File"}
+                                                <input
+                                                    type="file"
+                                                    accept="image/*,video/*"
+                                                    className="hidden"
+                                                    disabled={galleryUploading}
+                                                    onChange={async (e) => {
+                                                        const file = e.target.files[0];
+                                                        if (!file) return;
+                                                        try {
+                                                            setGalleryUploading(true);
+                                                            const formData = new FormData();
+                                                            formData.append('file', file);
+                                                            formData.append('college', college.id);
+                                                            formData.append('category', galleryCategory);
+                                                            formData.append('title', file.name.split('.')[0]);
+                                                            const newMedia = await galleryService.upload(formData);
+                                                            setGalleryMedia(prev => [newMedia, ...prev]);
+                                                            alert("Media uploaded successfully!");
+                                                        } catch (error) {
+                                                            console.error("Upload failed", error);
+                                                            alert("Failed to upload. Please try again.");
+                                                        } finally {
+                                                            setGalleryUploading(false);
+                                                            e.target.value = '';
+                                                        }
+                                                    }}
+                                                />
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Gallery Grid */}
+                                {galleryMedia.length === 0 ? (
+                                    <div className="text-center py-12 text-gray-500">
+                                        <Image className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                                        <p>No media uploaded yet.</p>
+                                        <p className="text-sm mt-1">Upload photos and videos to showcase your college.</p>
+                                    </div>
+                                ) : (
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {galleryMedia.map((item) => (
+                                            <div key={item.id} className="relative group rounded-lg overflow-hidden border shadow-sm">
+                                                {item.media_type === 'video' ? (
+                                                    <video
+                                                        src={item.file_url || item.file}
+                                                        className="w-full h-48 object-cover"
+                                                        muted
+                                                        preload="metadata"
+                                                    />
+                                                ) : (
+                                                    <img
+                                                        src={item.file_url || item.file}
+                                                        alt={item.title || item.category}
+                                                        className="w-full h-48 object-cover"
+                                                    />
+                                                )}
+                                                <div className="absolute top-2 left-2">
+                                                    <span className="bg-blue-600 text-white text-xs px-2 py-1 rounded">
+                                                        {GALLERY_CATEGORIES.find(c => c.value === item.category)?.label || item.category}
+                                                    </span>
+                                                </div>
+                                                <div className="absolute top-2 right-2">
+                                                    {item.media_type === 'video' ? (
+                                                        <span className="bg-purple-600 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                                                            <Video className="w-3 h-3" /> Video
+                                                        </span>
+                                                    ) : (
+                                                        <span className="bg-green-600 text-white text-xs px-2 py-1 rounded flex items-center gap-1">
+                                                            <Image className="w-3 h-3" /> Photo
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="p-3 flex items-center justify-between bg-white">
+                                                    <span className="text-sm text-gray-700 truncate">{item.title || 'Untitled'}</span>
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
+                                                        onClick={async () => {
+                                                            if (confirm("Delete this media?")) {
+                                                                try {
+                                                                    await galleryService.delete(item.id);
+                                                                    setGalleryMedia(prev => prev.filter(m => m.id !== item.id));
+                                                                } catch (error) {
+                                                                    console.error("Delete failed", error);
+                                                                    alert("Failed to delete.");
+                                                                }
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    </TabsContent>
+                </Tabs>
+            </main>
+        </div>
+    );
+}
